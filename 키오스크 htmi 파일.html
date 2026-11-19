@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>모두의 와퍼 - 베리어프리 주문 키오스크 MVP</title>
+<style>
+  /* ===== FR-05: 기본 테마 / 큰 글씨·고대비 테마 (CSS 변수로 전환) ===== */
+  :root {
+    --bg: #f5ebdc;
+    --fg: #502314;
+    --btn-bg: #d62300;
+    --btn-fg: #ffffff;
+    --btn-border: #502314;
+    --msg-bg: #ffffff;
+    --msg-fg: #198737;
+    --toggle-bg: #ffffff;
+    --toggle-fg: #502314;
+    --title: 36px;
+    --sub: 22px;
+    --order-fs: 48px;
+    --order-h: 160px;
+    --msg-fs: 40px;
+    --toggle-fs: 28px;
+  }
+  body[data-big="true"] {
+    --bg: #000000;
+    --fg: #ffffff;
+    --btn-bg: #ffd200;
+    --btn-fg: #000000;
+    --btn-border: #ffffff;
+    --msg-bg: #000000;
+    --msg-fg: #ffd200;
+    --toggle-bg: #000000;
+    --toggle-fg: #ffffff;
+    --title: 56px;
+    --sub: 36px;
+    --order-fs: 72px;
+    --order-h: 200px;
+    --msg-fs: 64px;
+    --toggle-fs: 40px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;      /* FR-04: 콘텐츠를 화면 하단으로 */
+    align-items: center;
+    padding: 24px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .top {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 24px; text-align: center;
+  }
+  .top h1 { font-size: var(--title); }
+  .top p  { font-size: var(--sub); margin-top: 8px; }
+
+  /* ===== FR-04: 모든 조작 요소를 화면 하단 절반에 배치 ===== */
+  .bottom {
+    width: 100%; max-width: 760px;
+    min-height: 50vh;
+    display: flex; flex-direction: column;
+    justify-content: flex-end; gap: 20px;
+  }
+
+  #message {
+    min-height: 100px;
+    font-size: var(--msg-fs); font-weight: bold;
+    text-align: center;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 16px;
+  }
+  #message.show {
+    background: var(--msg-bg);
+    color: var(--msg-fg);
+    border: 5px solid var(--msg-fg);
+  }
+
+  button {
+    width: 100%;
+    font-weight: bold;
+    border-radius: 24px;
+    cursor: pointer;
+    touch-action: manipulation;     /* 더블탭 확대 방지 */
+  }
+  button:focus-visible { outline: 6px solid #3b82f6; outline-offset: 4px; }
+
+  #bigBtn {
+    height: 100px;
+    font-size: var(--toggle-fs);
+    background: var(--toggle-bg);
+    color: var(--toggle-fg);
+    border: 4px solid var(--toggle-fg);
+  }
+  #orderBtn {
+    height: var(--order-h);
+    font-size: var(--order-fs);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border: 6px solid var(--btn-border);
+  }
+  button:active { transform: scale(0.98); }
+</style>
+</head>
+<body data-big="false">
+  <header class="top">
+    <h1>🍔 모두의 와퍼</h1>
+    <p>아래 버튼을 눌러 주문하세요</p>
+  </header>
+
+  <main class="bottom">
+    <!-- 주문 결과 메시지: 스크린리더도 읽도록 aria-live -->
+    <div id="message" role="status" aria-live="assertive"></div>
+
+    <!-- FR-05: 큰 글씨·고대비 전환 버튼 -->
+    <button id="bigBtn" type="button" aria-pressed="false">🔍 큰 글씨로 보기</button>
+
+    <!-- 주문 버튼 -->
+    <button id="orderBtn" type="button">🛒 주문하기</button>
+  </main>
+
+<script>
+  const body     = document.body;
+  const orderBtn = document.getElementById('orderBtn');
+  const bigBtn   = document.getElementById('bigBtn');
+  const msg      = document.getElementById('message');
+  let hideTimer  = null;
+
+  // FR-05: 큰 글씨·고대비 켜기/끄기
+  bigBtn.addEventListener('click', function () {
+    const on = body.dataset.big !== 'true';
+    body.dataset.big = on ? 'true' : 'false';
+    bigBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    bigBtn.textContent = on ? '🔍 기본 글씨로 보기' : '🔍 큰 글씨로 보기';
+  });
+
+  // 주문 버튼: "주문되었습니다." 표시 → 약 3초 후 사라짐
+  orderBtn.addEventListener('click', function () {
+    msg.textContent = '주문되었습니다.';
+    msg.classList.add('show');
+
+    clearTimeout(hideTimer);          // 연속으로 누르면 3초를 다시 셈
+    hideTimer = setTimeout(function () {
+      msg.textContent = '';
+      msg.classList.remove('show');
+    }, 3000);
+
+    // 음성 안내 (지원하지 않는 브라우저에서는 건너뜀)
+    try {
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance('주문되었습니다.');
+        u.lang = 'ko-KR';
+        speechSynthesis.speak(u);
+      }
+    } catch (e) { /* 음성 미지원: 화면 메시지만 표시 */ }
+  });
+</script>
+</body>
+</html>
